@@ -737,7 +737,8 @@ class SrhFitsFile0612(SrhFitsFile):
     def makeMaskModel(self, modelname = 'images/model', maskname = 'images/mask', imagename = 'images/temp', custom_mask = '', cell = 2.45, imsize = 1024, threshold=100000, stokes = 'RRLL', **kwargs):
         tclean(vis = self.ms_name,
                imagename = imagename,
-               cell = cell, 
+               cell = cell,
+               imsize = imsize,
                niter = 10000,
                threshold=threshold,
                stokes = stokes,
