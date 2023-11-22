@@ -734,11 +734,10 @@ class SrhFitsFile0612(SrhFitsFile):
                stokes = stokes,
                **kwargs)
 
-    def makeMaskModel(self, modelname = 'images/model', maskname = 'images/mask', imagename = 'images/temp', cell = 2.45, imsize = 1024, threshold=100000, stokes = 'RRLL', **kwargs):
+    def makeMaskModel(self, modelname = 'images/model', maskname = 'images/mask', imagename = 'images/temp', custom_mask = '', cell = 2.45, imsize = 1024, threshold=100000, stokes = 'RRLL', **kwargs):
         tclean(vis = self.ms_name,
                imagename = imagename,
                cell = cell, 
-               imsize = imsize,
                niter = 10000,
                threshold=threshold,
                stokes = stokes,
@@ -747,25 +746,33 @@ class SrhFitsFile0612(SrhFitsFile):
         ia = IA()
         self.model_name = modelname
         self.mask_name = maskname
-        os.system('cp -r \"%s.model\" \"%s\"' % (imagename, self.model_name))
-        os.system('cp -r \"%s.image\" \"%s\"' % (imagename, self.mask_name))
-        rmtables(tablenames = '%s*' % imagename)
-        
-        ia.open(self.mask_name)
-        self.restoring_beam = ia.restoringbeam()['beams']['*0']['*0']
-        ia_data = ia.getchunk()
-        mask = NP.zeros_like(ia_data)
-        im1 = ia_data[:,:,0,0]#.transpose()
-        im2 = ia_data[:,:,1,0]#.transpose()
-        
-        disk_mask = srh_utils.createDisk(self.sizeOfUv, arcsecPerPixel = cell, radius = 1000).astype(bool)
-        
-        mask[:,:,0,0] = (im1 > 100000) & disk_mask
-        mask[:,:,1,0] = (im2 > 100000) & disk_mask
 
-        ia.putchunk(pixels=mask)
-        ia.unlock()
-        ia.close()
+        
+        if custom_mask == '':
+            
+            os.system('cp -r \"%s.model\" \"%s\"' % (imagename, self.model_name))
+            os.system('cp -r \"%s.image\" \"%s\"' % (imagename, self.mask_name))
+            rmtables(tablenames = '%s*' % imagename)   
+            
+            ia.open(self.mask_name)
+            self.restoring_beam = ia.restoringbeam()['beams']['*0']['*0']
+            ia_data = ia.getchunk()
+            mask = NP.zeros_like(ia_data)
+            im1 = ia_data[:,:,0,0]#.transpose()
+            im2 = ia_data[:,:,1,0]#.transpose()
+            
+            disk_mask = srh_utils.createDisk(self.sizeOfUv, arcsecPerPixel = cell, radius = 1000).astype(bool)
+            
+            print(disk_mask.shape)
+            mask[:,:,0,0] = (im1 > 100000) & disk_mask
+            mask[:,:,1,0] = (im2 > 100000) & disk_mask
+
+            ia.putchunk(pixels=mask)
+            ia.unlock()
+            ia.close()
+            
+        else:
+            self.mask_name = custom_mask
         
         ia.open(self.model_name)
         ia_data = ia.getchunk()
@@ -875,11 +882,12 @@ class SrhFitsFile0612(SrhFitsFile):
             self.out_filenames.append(saveFitsIpath)
             self.out_filenames.append(saveFitsVpath)
         
-    def makeImage(self, path = './', calibtable = '', remove_tables = True, frequency = 0, scan = 0, average = 0, compress_image = True, RL = False, clean_disk = True, calibrate = True, cell = 2.45, imsize = 1024, niter = 100000, threshold = 40000, stokes = 'RRLL', **kwargs):
+    def makeImage(self, path = './', calibtable = '', custom_mask = '', remove_tables = True, frequency = 0, scan = 0, average = 0, compress_image = True, RL = False, clean_disk = True, calibrate = True, cell = 2.45, imsize = 1024, niter = 100000, threshold = 40000, stokes = 'RRLL', **kwargs):
         fitsTime = srh_utils.ihhmm_format(self.freqTime[frequency, scan])
         imagename = 'srh_%sT%s_%04d'%(self.hduList[0].header['DATE-OBS'].replace('-',''), fitsTime.replace(':',''), self.freqList[frequency]*1e-3 + .5)
         absname = os.path.join(path, imagename)
         casa_imagename = os.path.join(path, imagename)
+
         if calibtable!='':
             self.setFrequencyChannel(frequency)
             self.loadGains(calibtable)
@@ -888,7 +896,18 @@ class SrhFitsFile0612(SrhFitsFile):
         self.saveAsUvFits(absname+'.fits', frequency=frequency, scan=scan, average=average)
         self.MSfromUvFits(absname+'.fits', absname+'.ms')
         
-        self.makeMaskModel(modelname = casa_imagename + '_model', maskname = casa_imagename + '_mask', imagename = casa_imagename + '_temp')
+        if custom_mask != '':
+            try:
+                self.mask_name = custom_mask
+                print('Use custom mask')
+                self.makeMaskModel(modelname = casa_imagename + '_model', maskname = self.mask_name, imagename = casa_imagename + '_temp',custom_mask = custom_mask)
+            except FileNotFoundError as err:
+                print(f'File not found - {err}')
+        else:
+            self.makeMaskModel(modelname = casa_imagename + '_model', maskname = casa_imagename + '_mask', imagename = casa_imagename + '_temp')        
+            
+        # self.makeMaskModel(modelname = casa_imagename + '_model', maskname = casa_imagename + '_mask', imagename = casa_imagename + '_temp')
+        
         a,b,ang = self.restoring_beam['major']['value'],self.restoring_beam['minor']['value'],self.restoring_beam['positionangle']['value']
         rb = ['%.2farcsec'%(a*0.8), '%.2farcsec'%(b*0.8), '%.2fdeg'%ang]
         if clean_disk:

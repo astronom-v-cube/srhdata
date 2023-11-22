@@ -808,10 +808,19 @@ class SrhFitsFile0306(SrhFitsFile):
             
         
         
-    def makeImage(self, path = './', calibtable = '', remove_tables = True, frequency = 0, scan = 0, average = 0, compress_image = True, RL = False, clean_disk = True, calibrate = True, cell = 2.45, imsize = 1024, niter = 100000, threshold = 100000, stokes = 'RRLL', **kwargs):
+    def makeImage(self, path = './', calibtable = '', custom_mask = '', remove_tables = True, frequency = 0, scan = 0, average = 0, compress_image = True, RL = False, clean_disk = True, calibrate = True, cell = 2.45, imsize = 1024, niter = 100000, threshold = 100000, stokes = 'RRLL', **kwargs):
         fitsTime = srh_utils.ihhmm_format(self.freqTime[frequency, scan])
         imagename = 'srh_%sT%s_%04d'%(self.hduList[0].header['DATE-OBS'].replace('-',''), fitsTime.replace(':',''), self.freqList[frequency]*1e-3 + .5)
-        self.mask_name = os.path.join(path, 'srh_%sT%s_mask'%(self.hduList[0].header['DATE-OBS'], fitsTime))
+        
+        if custom_mask != '':
+            try:
+                self.mask_name = custom_mask
+                print('Use custom mask')
+            except FileNotFoundError as err:
+                print(f'File not found - {err}')
+        else:
+            self.mask_name = os.path.join(path, 'srh_%sT%s_mask'%(self.hduList[0].header['DATE-OBS'], fitsTime))
+            
         absname = os.path.join(path, imagename)
         casa_imagename = os.path.join(path, imagename)
         if calibtable!='':
@@ -820,6 +829,7 @@ class SrhFitsFile0306(SrhFitsFile):
         elif calibrate:
             self.calibrate(frequency)
         if not os.path.exists(self.mask_name):
+            print('Mask not found! Created mask...')
             self.makeMask(maskname = self.mask_name)
         self.saveAsUvFits(absname+'.fits', frequency=frequency, scan=scan, average=average)
         self.MSfromUvFits(absname+'.fits', absname+'.ms')
